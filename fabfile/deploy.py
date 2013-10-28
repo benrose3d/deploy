@@ -27,6 +27,13 @@ DIRECTORIES = [
     ("shared/run", None),
 ]
 
+DIST_PACKAGES = {
+    "psycopg2": ["psycopg2", "psycopg2-*.egg-info"],
+    "lxml": ["lxml", "lxml-*.egg-info"],
+    "imaging": ["PIL", "PIL.pth"],
+    "mysqldb": ["MySQLdb", "MySQL_python-*.egg-info", "_mysql*"],
+}
+
 
 @fabric.task
 def create_directories():
@@ -57,6 +64,8 @@ def create_virtualenv(recreate=False):
 
     fabric.run("virtualenv --python=python{python} {pkgs_flag} {path}".format(
                 **locals()))
+
+    fabric.execute(link_dist_packages)
 
 
 @fabric.task
@@ -288,6 +297,21 @@ def prune(to_keep=5):
 def rollback_migrations():
     # TODO
     pass
+def link_dist_packages():
+    # TODO: less of a shotgun approach
+    dist_pkgs = "/usr/lib/python{}/dist-packages".format(
+            fabric.env.cfg.python_version)
+
+    site_pkgs = os.path.join(fabric.env.cfg.root, "shared", "system", "lib",
+            "python{}".format(fabric.env.cfg.python_version), "site-packages")
+
+    args = ["-name {!r}".format(glob) for value in DIST_PACKAGES.values() for
+            glob in value]
+
+    fabric.run("find {} {} | xargs -I % ln -s % {}".format(
+        dist_pkgs, " -o ".join(args), site_pkgs), warn_only=True)
+
+
 
 
 @fabric.task
