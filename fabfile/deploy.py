@@ -8,8 +8,8 @@ from utils import all_processes_sudo, dir_exists
 from utils import friendly_release_dir, print_center
 from utils import mkdir, ErrorCollector, requires_config
 from utils import get_release_ref, get_release_dir, django_run
-from migrations import get_release_meta
-from migrations import get_release_manifest, parse_migrations
+from utils.migrations import get_release_meta, MigrationRollback
+from utils.migrations import get_release_manifest, parse_migrations
 
 
 __all__ = ["setup", "check", "promote", "prune", "rollback", "info",
@@ -294,9 +294,6 @@ def prune(to_keep=5):
 
 
 @fabric.task
-def rollback_migrations():
-    # TODO
-    pass
 def link_dist_packages():
     # TODO: less of a shotgun approach
     dist_pkgs = "/usr/lib/python{}/dist-packages".format(
@@ -312,6 +309,13 @@ def link_dist_packages():
         dist_pkgs, " -o ".join(args), site_pkgs), warn_only=True)
 
 
+@fabric.task
+def rollback_migrations(from_release, to_release):
+    current = None # get current release manifest text
+    prior = None # get prior release manifest text
+
+    for app, version in MigrationRollback(current, prior):
+        django_run("migrate", app, version)
 
 
 @fabric.task

@@ -70,3 +70,56 @@ def get_release_meta(data):
     data["date"] = friendly_date(data["date"], "%Y-%m-%dT%H:%M:%SZ")
 
     return data
+
+
+class MigrationRollback(object):
+    """Works out a migration rollback plan
+
+    Given two release manifests from the currently deployed release and the
+    previously deployed release, yields a list of (app_name, version) tuples to
+    be used when calling `manage.py migrate` for schema rollbacks. Handles apps
+    added between versions. Does not modify apps that have no migrations
+    between versions.
+    """
+
+    def __init__(self, current, prior):
+        self.current = self.load_cfg(current)
+        self.prior = self.load_cfg(prior)
+
+    @staticmethod
+    def load_cfg(file):
+        cfg = SafeConfigParser()
+
+        if not hasattr(file, "readline"):
+            cfg.readfp(StringIO(file))
+        else:
+            cfg.readfp(file)
+
+        return cfg
+
+    @staticmethod
+    def extract_most_recent(cfg):
+        latest = {}
+
+        for section in cfg.sections():
+            if section.startswith("migrations:"):
+                app = section[11:]
+            else:
+                continue
+
+            latest[app] = sorted([name.split("_")[0] for name in
+                cfg.options(section)], reverse=True)[0]
+
+        return latest
+
+    def __iter__(self):
+        current = self.extract_most_recent(self.current)
+        prior = self.extract_most_recent(self.prior)
+
+        for app, version in current.items():
+            if app not in prior:
+                yield (app, '0000')
+                continue
+
+            if int(prior[app]) < int(version):
+                yield app, prior[app]
