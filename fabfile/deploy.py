@@ -57,7 +57,7 @@ def create_virtualenv(recreate=False):
             warn_only=True).succeeded
 
     if exists and recreate:
-        fabric.run("rm -rf {}".format(test_path))
+        fabric.run("rm -rf {}".format(path))
 
     if exists and not recreate:
         return
@@ -217,7 +217,7 @@ def deploy():
 def recreate_virtualenv():
     """Purge the old virtualenv and recreate
     """
-    fabric.execute(create_directories, recreate=True)
+    fabric.execute(create_virtualenv, recreate=True)
 
 
 @fabric.task
