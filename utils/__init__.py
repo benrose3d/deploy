@@ -17,6 +17,7 @@ class AttrDict(dict):
         "can_sudo": "false",
         "workers": None,
         "checkout_strategy": "deploy_branch:origin/master",
+        "root": "/home/{user}",
     }
 
     SENTINEL = object()
@@ -29,6 +30,9 @@ class AttrDict(dict):
 
         if value is self.SENTINEL:
             value = self.DEFAULTS[attr]
+
+        if hasattr(value, "format"):
+            value = value.format(**self)
 
         if attr.endswith("_list"):
             return [i.strip() for i in value.split(",")]
