@@ -21,6 +21,7 @@ __all__ = ["setup", "check", "promote", "prune", "rollback", "info",
 DIRECTORIES = [
     ("releases", None, None),
     (".pip_cache", None, None),
+    ("bin", None, None),
     ("shared/secrets", 700, None),
     ("shared/init", None, None),
     ("shared/log", 770, "{user}:www-data"),
@@ -48,6 +49,29 @@ def create_directories():
             if owner:
                 fabric.run("chown {} {}".format(owner.format(**fabric.env.cfg),
                     directory))
+
+
+@fabric.task
+@requires_config
+def create_binstubs():
+    template = os.path.join(os.path.dirname(__file__), "templates",
+            "run.sh")
+    output = os.path.join(fabric.env.cfg.root, "bin", "run")
+
+    runner = ("{root}/shared/system/bin/envrun "
+              "{root}/shared/secrets/environ.cfg "
+              "{root}/shared/system/bin/django-admin.py ")
+
+    args = {
+        "app_name": fabric.env.cfg.app_name,
+        "root": fabric.env.cfg.root,
+        "env_name": fabric.env.environment_name,
+    }
+
+    args["runner"] = runner.format(**args)
+
+    upload_template(template, output, args, backup=False)
+    fabric.run("chmod +x {}".format(output))
 
 
 @fabric.task
@@ -269,6 +293,7 @@ def setup():
     fabric.execute(create_virtualenv)
     fabric.execute(create_upstart_configs)
     fabric.execute(create_nginx_config)
+    fabric.execute(create_binstubs)
 #    fabric.execute(copy_upstart_config)
 
 
