@@ -14,17 +14,18 @@ from utils.migrations import get_release_manifest, parse_migrations
 
 __all__ = ["setup", "check", "promote", "prune", "rollback", "info",
             "build_docs", "deploy", "recreate_virtualenv", "purge",
-            "list_prior"]
+            "list_prior", "put_secrets"]
 
 
 # Dir name (relative to root) and mode
 DIRECTORIES = [
-    ("releases", None),
-    (".pip_cache", None),
-    ("shared/secrets", 700),
-    ("shared/init", None),
-    ("shared/log", None),
-    ("shared/run", None),
+    ("releases", None, None),
+    (".pip_cache", None, None),
+    ("shared/secrets", 700, None),
+    ("shared/init", None, None),
+    ("shared/log", 770, "{user}:www-data"),
+    ("shared/run", None, None),
+    ("shared/config", None, None),
 ]
 
 DIST_PACKAGES = {
@@ -38,11 +39,15 @@ DIST_PACKAGES = {
 @fabric.task
 def create_directories():
     with fabric.cd(mkdir(fabric.env.cfg.root)):
-        for directory, mode in DIRECTORIES:
+        for directory, mode, owner in DIRECTORIES:
             mkdir(directory)
 
             if mode:
                 fabric.run("chmod {} {}".format(mode, directory))
+
+            if owner:
+                fabric.run("chown {} {}".format(owner.format(**fabric.env.cfg),
+                    directory))
 
 
 @fabric.task
@@ -69,17 +74,46 @@ def create_virtualenv(recreate=False):
 
 
 @fabric.task
+def create_nginx_config():
+    http_template = os.path.join(os.path.dirname(__file__), "templates",
+            "nginx.cfg")
+    https_template = os.path.join(os.path.dirname(__file__), "templates",
+            "nginx_ssl.cfg")
+
+    args = {
+        "app_name": fabric.env.cfg.app_name,
+        "root": fabric.env.cfg.root,
+        "shared": os.path.join(fabric.env.cfg.root, "shared"),
+        "server_name": fabric.env.cfg.server_name,
+        "env_name": fabric.env.environment_name,
+    }
+
+    upload_template(http_template,
+            os.path.join(fabric.env.cfg.root, "shared", "config",
+                "{app_name}-{env_name}".format(**args)),
+            args, backup=False)
+
+    upload_template(https_template,
+            os.path.join(fabric.env.cfg.root, "shared", "config",
+                "{app_name}-{env_name}-ssl".format(**args)),
+            args, backup=False)
+
+
+@fabric.task
 def create_upstart_configs():
     template = os.path.join(os.path.dirname(__file__), "templates",
             "upstart.cfg")
 
+    runner = ("{root}/shared/system/bin/envrun "
+                "{root}/shared/secrets/environ.cfg {command}")
+
     default_processes = {
-        "web": ("{root}/shared/system/bin/gunicorn "
-                    "--settings={app_name}.settings {workers}"
-                    "--error-logfile={root}/shared/system/logs/error.log "
-                    "--pid={root}/shared/system/run/gunicorn.pid "
-                    "--bind=unix:{root}/shared/system/run/gunicorn.sock "
-                    "{app_name}.wsgi:application"),
+        "web": ("gunicorn "
+                "--settings={app_name}.settings {workers}"
+                "--error-logfile={shared}/log/error.log "
+                "--pid={shared}/run/gunicorn.pid "
+                "--bind=unix:{shared}/run/gunicorn.sock "
+                "{app_name}.wsgi:application"),
     }
 
     processes = fabric.env.cfg.processes or default_processes
@@ -91,23 +125,27 @@ def create_upstart_configs():
         "path": fabric.env.cfg.root,
         "app_name": fabric.env.cfg.app_name,
         "root": fabric.env.cfg.root,
+        "shared": os.path.join(fabric.env.cfg.root, "shared"),
+        "server_name": fabric.env.cfg.server_name,
+        "env_name": fabric.env.environment_name,
         "workers": "--workers={}".format(workers) if workers else "",
     }
 
-    for process_name, command in processes.items():
-        if process_name in default_processes and not command:
-            command = default_processes[process_name]
+    for process_name, base_command in processes.items():
+        if process_name in default_processes and not base_command:
+            base_command = default_processes[process_name]
 
         args.update({
             "description": "{} {}".format(fabric.env.cfg.app_name,
                 process_name),
             "process_name": process_name,
-            "process": command.format(**args),
+            "process": runner.format(root=fabric.env.cfg.root,
+                command=base_command.format(**args)),
         })
 
         upload_template(template,
                 os.path.join(fabric.env.cfg.root, "shared", "init",
-                    "{app_name}-{process_name}.cfg".format(**args)),
+                    "{app_name}-{env_name}-{process_name}.conf".format(**args)),
                 args, backup=False)
 
 
@@ -228,6 +266,7 @@ def setup():
     fabric.execute(create_directories)
     fabric.execute(create_virtualenv)
     fabric.execute(create_upstart_configs)
+    fabric.execute(create_nginx_config)
 #    fabric.execute(copy_upstart_config)
 
 
@@ -237,7 +276,7 @@ def purge():
     """Completely remove all app directories
     """
     with fabric.cd(fabric.env.cfg.root):
-        for directory, _ in DIRECTORIES:
+        for directory, _, _ in DIRECTORIES:
             fabric.run("rm -rf {}".format(directory))
 
     fabric.run("rm -rf shared")
@@ -254,6 +293,7 @@ def check():
     error.test("which virtualenv", "Missing `virtualenv` executable")
     error.test("which git", "Missing `git` executable")
     error.test("which yui-compressor", "Missing `yui-compressor` executable")
+    error.test("groups | grep www-data", "User not in the `www-data` group")
 
     return error.value
 
@@ -375,3 +415,16 @@ def build_docs():
         fabric.run("pip freeze | grep -i sphinx || pip install sphinx")
         fabric.run("sphinx-build -b html -d doc/_build/doctrees "
                 "doc/ doc/_build/html")
+
+
+
+@fabric.task
+@requires_config
+def put_secrets():
+    secret_file = os.path.join(fabric.env.cfg.root, "shared", "secrets",
+            "environ.cfg")
+    secrets = os.path.join("config", "secrets", fabric.env.cfg.app_name,
+            "{}.cfg".format(fabric.env.environment_name))
+
+    fabric.put(secrets, secret_file)
+    fabric.run("chmod 600 {}".format(secret_file))
