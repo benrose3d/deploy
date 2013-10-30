@@ -421,6 +421,8 @@ def build_docs():
 @fabric.task
 @requires_config
 def put_secrets():
+    """Push secret configs to server and set permissions
+    """
     secret_file = os.path.join(fabric.env.cfg.root, "shared", "secrets",
             "environ.cfg")
     secrets = os.path.join("config", "secrets", fabric.env.cfg.app_name,
