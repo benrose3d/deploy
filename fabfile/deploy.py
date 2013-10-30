@@ -211,7 +211,9 @@ def copy_upstart_config():
 
 @fabric.task
 def migrate():
-    django_run("syncdb", "--noinput")
+    if not fabric.env.cfg.skip_syncdb:
+        django_run("syncdb", "--noinput")
+
     django_run("migrate", "--no-initial-data")
 
 
