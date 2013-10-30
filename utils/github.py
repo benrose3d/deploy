@@ -3,17 +3,36 @@ import json
 from urllib2 import urlopen, Request
 
 
+def expand_path(path):
+    return os.path.expanduser(os.path.expandvars(path))
+
+
+def find_github_token():
+    file_key = None
+    key_path = expand_path("~/.github_token")
+
+    if os.path.exists(key_path):
+        with open(key_path) as fp:
+            file_key = fp.read()
+
+    keys = [
+        os.environ.get("GITHUB_TOKEN"),
+        file_key,
+    ]
+
+    try:
+        return filter(None, keys)[0]
+    except IndexError:
+        raise IndexError("No GitHub token was found")
+
+
 class SSHKey(object):
 
     def __init__(self, filename):
         self.file = filename
 
-    @staticmethod
-    def _expand_path(path):
-        return os.path.expanduser(os.path.expandvars(path))
-
     def as_python(self):
-        with open(self._expand_path(self.file), "r") as fp:
+        with open(expand_path(self.file), "r") as fp:
             data = fp.read().split()
 
         return { "title": data[-1], "key": " ".join(data[:2]) }
