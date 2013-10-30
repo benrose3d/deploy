@@ -106,16 +106,17 @@ def all_processes_sudo(cmd):
 def get_release_ref():
     method, name = fabric.env.cfg.checkout_strategy.split(":", 1)
 
-    if method == "deploy_tag":
-        return fabric.run("git tag -l '{}-*' | sort -nr | head -n1".format(
-            name))
-    elif method == "deploy_branch":
-        return name
-    elif method == "deploy_rev":
-        return name
-    else:
-        raise Exception("Invalid deployment strategy {!r}".format(name))
+    if method not in ("deploy_tag", "deploy_branch", "deploy_rev"):
+        raise Exception("Invalid deployment strategy {!r}".format(method))
 
+    if method == "deploy_tag":
+        name = fabric.run("git tag -l '{}-*' | sort -nr | head -n1".format(
+            name))
+
+    if not name.strip():
+        raise Exception("No valid rev was found for {!r}".format(name))
+
+    return name
 
 def get_release_dir():
     return os.path.join(fabric.env.cfg.root, "releases",
