@@ -132,6 +132,10 @@ def friendly_release_dir(name):
 
 
 def django_run(cmd, *args, **kwargs):
+    pre = os.path.join(fabric.env.cfg.root, "shared",
+            "system", "bin", "envrun")
+    config = os.path.join(fabric.env.cfg.root, "shared",
+            "secrets","environ.cfg")
     manage = os.path.join(fabric.env.cfg.root, "shared", "system", "bin",
             "django-admin.py")
     release_dir = os.path.join(fabric.env.cfg.root, "current")
@@ -142,7 +146,7 @@ def django_run(cmd, *args, **kwargs):
     ])
 
     with fabric.shell_env(PYTHONPATH=pythonpath):
-        return fabric.run("{} {} --settings={}.settings {}".format(manage, cmd,
+        return fabric.run("{} {} {} {} --settings={}.settings {}".format(pre, config, manage, cmd,
             fabric.env.cfg.app_name, " ".join(args)), **kwargs)
 
 
