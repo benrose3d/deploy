@@ -168,3 +168,21 @@ def print_center(string, *args):
 def get_prior_release():
     with fabric.cd(os.path.join(fabric.env.cfg.root, "releases")):
         return fabric.run("ls -t | head -n 2 | tail -n 1", quiet=True)
+
+
+def _rooted_path(root, *args):
+    parts = []
+    for arg in args:
+        parts.extend(arg.split("/"))
+
+    return os.path.join(root, *parts)
+
+
+def root_path(*args):
+    return _rooted_path(fabric.env.cfg.root, *args)
+
+
+def local_path(*args):
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
+        "fabfile"))
+    return _rooted_path(path, *args)
