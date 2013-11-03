@@ -237,6 +237,23 @@ def write_release_manifest():
     fabric.put(manifest, root_path("current/manifest.cfg"))
 
 
+@fabric.task
+def casexpert_hack():
+    template = local_path("templates/casexpert_settings.py")
+    upload_template(template,
+            root_path("current/settings_local.py"), {}, backup=False)
+
+    env = {
+        "PIP_DOWNLOAD_CACHE": root_path(".pip_cache"),
+        "PATH": root_path("shared/system/bin"),
+    }
+
+    with fabric.shell_env(**env), fabric.cd(fabric.env.release_dir):
+        fabric.run("pip install "
+                "--find-links http://packages.finiteloopsoftware.com/eggs/ "
+                "finiteloop")
+
+
 @fabric.task(default=True)
 @requires_config
 def deploy():
@@ -250,6 +267,7 @@ def deploy():
     fabric.execute(update_code)
     fabric.execute(link_release)
     fabric.execute(pip_install_requirements)
+    fabric.execute(casexpert_hack)
     fabric.execute(precompile_assets)
     fabric.execute(build_docs)
     fabric.execute(migrate)
