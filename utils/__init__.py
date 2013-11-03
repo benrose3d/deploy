@@ -61,12 +61,13 @@ class ErrorCollector(object):
         self.value = 0
 
     def test(self, cmd, if_missing):
-        if not self.checked_run(cmd):
+        if not test_cmd(cmd):
             print(colors.red(if_missing))
             self.value = 0
 
-    def checked_run(self, cmd):
-        return fabric.run(cmd, quiet=True, warn_only=True).succeeded
+
+def test_cmd(cmd):
+    return fabric.run(cmd, warn_only=True, quiet=True).succeeded
 
 
 def mkdir(path):
