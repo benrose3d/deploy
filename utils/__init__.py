@@ -22,6 +22,14 @@ class AttrDict(dict):
 
     SENTINEL = object()
 
+    def as_dict(self):
+        # This is a hack around doing ** expansion for kwargs since I'm not
+        # sure what to do to override that.
+        return dict((k, self.get(k)) for k in self.keys())
+
+    def items(self):
+        return [(k, self.get(k)) for k in self.keys()]
+
     def get_bool(self, key, default=SENTINEL):
         return self.get(key, default).lower() == "true"
 
@@ -39,8 +47,12 @@ class AttrDict(dict):
 
         return value
 
-    def __getattr__(self, attr):
-        return self.get(attr)
+    __getitem__ = get
+    __getattr__ = get
+
+    def __iter__(self):
+        for key in self.keys():
+            yield self.get(key)
 
 
 class ErrorCollector(object):
