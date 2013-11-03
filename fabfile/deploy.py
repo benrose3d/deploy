@@ -48,16 +48,14 @@ def create_directories():
                 fabric.run("chmod {} {}".format(mode, directory))
 
             if owner:
-                fabric.run("chown {} {}".format(owner.format(**fabric.env.cfg),
-                    directory))
+                fabric.run("chown {} {}".format(
+                    owner.format(**fabric.env.cfg.as_dict()), directory))
 
 
 @fabric.task
 @requires_config
 def create_binstubs():
-    template = os.path.join(os.path.dirname(__file__), "templates",
-            "run.sh")
-    output = os.path.join(fabric.env.cfg.root, "bin", "run")
+    output = root_path("bin/run")
 
     runner = ("{root}/shared/system/bin/envrun "
               "{root}/shared/secrets/environ.cfg "
@@ -71,7 +69,7 @@ def create_binstubs():
 
     args["runner"] = runner.format(**args)
 
-    upload_template(template, output, args, backup=False)
+    upload_template(local_path("templates/run.sh"), output, args, backup=False)
     fabric.run("chmod +x {}".format(output))
 
 
@@ -80,10 +78,9 @@ def create_virtualenv(recreate=False):
     python = fabric.env.cfg.python_version
     site_packages = fabric.env.cfg.get_bool("site_packages")
     pkgs_flag = "" if site_packages else "--no-site-packages"
-    path = os.path.join(fabric.env.cfg.root, "shared", "system")
-    test_path = os.path.join(path, "bin")
+    path = root_path("shared/system")
 
-    exists = fabric.run("test -d {}".format(test_path),
+    exists = fabric.run("test -d {}".format(root_path("shared/system/bin")),
             warn_only=True).succeeded
 
     if exists and recreate:
@@ -100,34 +97,30 @@ def create_virtualenv(recreate=False):
 
 @fabric.task
 def create_nginx_config():
-    http_template = os.path.join(os.path.dirname(__file__), "templates",
-            "nginx.cfg")
-    https_template = os.path.join(os.path.dirname(__file__), "templates",
-            "nginx_ssl.cfg")
+    http_template = local_path("templates/nginx.cfg")
+    https_template = local_path("templates/nginx_ssl.cfg")
 
     args = {
         "app_name": fabric.env.cfg.app_name,
         "root": fabric.env.cfg.root,
-        "shared": os.path.join(fabric.env.cfg.root, "shared"),
+        "shared": root_path("shared"),
         "server_name": fabric.env.cfg.server_name,
         "env_name": fabric.env.environment_name,
     }
 
     upload_template(http_template,
-            os.path.join(fabric.env.cfg.root, "shared", "config",
-                "{app_name}-{env_name}".format(**args)),
+            root_path("shared/config", "{app_name}-{env_name}".format(**args)),
             args, backup=False)
 
     upload_template(https_template,
-            os.path.join(fabric.env.cfg.root, "shared", "config",
+            root_path("shared/config",
                 "{app_name}-{env_name}-ssl".format(**args)),
             args, backup=False)
 
 
 @fabric.task
 def create_upstart_configs():
-    template = os.path.join(os.path.dirname(__file__), "templates",
-            "upstart.cfg")
+    template = local_path("templates/upstart.cfg")
 
     runner = ("{root}/shared/system/bin/envrun "
                 "{root}/shared/secrets/environ.cfg {command}")
@@ -150,7 +143,7 @@ def create_upstart_configs():
         "path": fabric.env.cfg.root,
         "app_name": fabric.env.cfg.app_name,
         "root": fabric.env.cfg.root,
-        "shared": os.path.join(fabric.env.cfg.root, "shared"),
+        "shared": root_path("shared"),
         "server_name": fabric.env.cfg.server_name,
         "env_name": fabric.env.environment_name,
         "workers": "--workers={}".format(workers) if workers else "",
@@ -169,14 +162,14 @@ def create_upstart_configs():
         })
 
         upload_template(template,
-                os.path.join(fabric.env.cfg.root, "shared", "init",
+                root_path("shared/init",
                     "{app_name}-{env_name}-{process_name}.conf".format(**args)),
                 args, backup=False)
 
 
 @fabric.task
 def update_code():
-    repo_path = os.path.join(fabric.env.cfg.root, "shared", "repo")
+    repo_path = root_path("shared/repo")
 
     if not dir_exists(repo_path):
         fabric.run("git clone -nq {} {}".format(fabric.env.cfg.repo, repo_path))
@@ -197,10 +190,7 @@ def update_code():
 
 @fabric.task
 def configure_ssh():
-    ret = fabric.run("grep 'Host github.com' ~/.ssh/config", warn_only=True,
-            quiet=True)
-
-    if ret.failed:
+    if not test_cmd("grep 'Host github.com' ~/.ssh/config"):
         fabric.run("echo 'Host github.com\n    StrictHostKeyChecking no' "
                 ">> ~/.ssh/config")
 
@@ -218,20 +208,12 @@ def link_release(release=None):
 @fabric.task
 def pip_install_requirements():
     env = {
-        "PIP_DOWNLOAD_CACHE": os.path.join(fabric.env.cfg.root, ".pip_cache"),
-        "PATH": os.path.join(fabric.env.cfg.root, "shared", "system", "bin"),
+        "PIP_DOWNLOAD_CACHE": root_path(".pip_cache"),
+        "PATH": root_path("shared/system/bin"),
     }
 
     with fabric.shell_env(**env), fabric.cd(fabric.env.release_dir):
         fabric.run("pip install -q -r requirements.txt")
-
-
-@fabric.task
-def copy_upstart_config():
-    if fabric.env.cfg.get_bool("copy_upstart_config") and fabric.env.can_sudo:
-        return
-
-    fabric.sudo("cp {}/system/init/* /etc/init/".format(fabric.env.cfg.root))
 
 
 @fabric.task
@@ -249,11 +231,10 @@ def precompile_assets():
 
 @fabric.task
 def write_release_manifest():
-    output = os.path.join(fabric.env.cfg.root, "current", "manifest.cfg")
     migrations = parse_migrations(str(django_run("migrate", "--list",
         quiet=True)))
     manifest = get_release_manifest(migrations)
-    fabric.put(manifest, output)
+    fabric.put(manifest, root_path("current/manifest.cfg"))
 
 
 @fabric.task(default=True)
@@ -295,7 +276,6 @@ def setup():
     fabric.execute(create_upstart_configs)
     fabric.execute(create_nginx_config)
     fabric.execute(create_binstubs)
-#    fabric.execute(copy_upstart_config)
 
 
 @fabric.task
@@ -357,7 +337,7 @@ def promote(from_env):
 def prune(to_keep=5):
     """Remove old releases
     """
-    with fabric.cd(os.path.join(fabric.env.cfg.root, "releases")):
+    with fabric.cd(root_path("releases")):
         fabric.run("ls -t | tail -n $(( `ls -t | wc -l` - 5 )) | xargs rm -r")
 
 
@@ -367,7 +347,7 @@ def link_dist_packages():
     dist_pkgs = "/usr/lib/python{}/dist-packages".format(
             fabric.env.cfg.python_version)
 
-    site_pkgs = os.path.join(fabric.env.cfg.root, "shared", "system", "lib",
+    site_pkgs = root_path("shared/system/lib",
             "python{}".format(fabric.env.cfg.python_version), "site-packages")
 
     args = ["-name {!r}".format(glob) for value in DIST_PACKAGES.values() for
@@ -394,8 +374,7 @@ def rollback(to="previous"):
     if to == "previous":
         to = get_prior_release()
 
-    to_rel = os.path.join(fabric.env.cfg.root, "releases", to)
-    fabric.execute(link_release, to_rel)
+    fabric.execute(link_release, root_path("releases", to))
     fabric.execute(rollback_migrations)
     fabric.execute(restart)
 
@@ -405,8 +384,7 @@ def rollback(to="previous"):
 def list_prior():
     """List all prior releases on server
     """
-    rel_dir = os.path.join(fabric.env.cfg.root, "releases")
-    fabric.run("ls {} | sort -n".format(rel_dir))
+    fabric.run("ls {} | sort -n".format(root_path("releases")))
 
 
 @fabric.task
@@ -414,8 +392,8 @@ def list_prior():
 def info():
     """See what's currently deployed
     """
-    manifest = os.path.join(fabric.env.cfg.root, "current", "manifest.cfg")
-    value = fabric.run("cat {}".format(manifest), quiet=True)
+    value = fabric.run("cat {}".format(root_path("current/manifest.cfg")),
+            quiet=True)
     data = get_release_meta(str(value))
 
     print "=" * 80
@@ -436,7 +414,7 @@ def info():
 def build_docs():
     """Build documentation
     """
-    with fabric.cd(os.path.join(fabric.env.cfg.root, "current")):
+    with fabric.cd(root_path("current")):
         if not dir_exists("doc"):
             return
 
@@ -445,14 +423,12 @@ def build_docs():
                 "doc/ doc/_build/html")
 
 
-
 @fabric.task
 @requires_config
 def put_secrets():
     """Push secret configs to server and set permissions
     """
-    secret_file = os.path.join(fabric.env.cfg.root, "shared", "secrets",
-            "environ.cfg")
+    secret_file = root_path("shared/secrets/environ.cfg")
     secrets = os.path.join("config", "secrets", fabric.env.cfg.app_name,
             "{}.cfg".format(fabric.env.environment_name))
 
