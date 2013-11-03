@@ -145,18 +145,8 @@ def friendly_release_dir(name):
 
 
 def django_run(cmd, *args, **kwargs):
-    manage = os.path.join(fabric.env.cfg.root, "shared", "system", "bin",
-            "django-admin.py")
-    release_dir = os.path.join(fabric.env.cfg.root, "current")
-
-    pythonpath = ":".join([
-        release_dir,
-        os.path.join(release_dir, fabric.env.cfg.app_name),
-    ])
-
-    with fabric.shell_env(PYTHONPATH=pythonpath):
-        return fabric.run("{} {} --settings={}.settings {}".format(manage, cmd,
-            fabric.env.cfg.app_name, " ".join(args)), **kwargs)
+    command = [root_path("bin/run"), cmd] + list(args)
+    return fabric.run(" ".join(command), **kwargs)
 
 
 def print_center(string, *args):
