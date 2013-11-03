@@ -1,0 +1,1 @@
+{user} ALL = NOPASSWD: /sbin/start {app_name}-{env_name}-*, /sbin/stop {app_name}-{env_name}-*, /sbin/restart {app_name}-{env_name}-*

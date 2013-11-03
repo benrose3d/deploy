@@ -1,9 +1,10 @@
 import os
 from fabric import colors
 import fabric.api as fabric
-from fabric.contrib.files import upload_template
+from fabric.contrib.files import upload_template, append as append_to_file
 
-from utils import get_prior_release
+from utils import local_path, root_path
+from utils import get_prior_release, test_cmd
 from utils import all_processes_sudo, dir_exists
 from utils import friendly_release_dir, print_center
 from utils import mkdir, ErrorCollector, requires_config
@@ -14,7 +15,7 @@ from utils.migrations import get_release_manifest, parse_migrations
 
 __all__ = ["setup", "check", "promote", "prune", "rollback", "info",
             "build_docs", "deploy", "recreate_virtualenv", "purge",
-            "list_prior", "put_secrets"]
+            "list_prior", "put_secrets", "configure_server"]
 
 
 # Dir name (relative to root) and mode
@@ -457,3 +458,34 @@ def put_secrets():
 
     fabric.put(secrets, secret_file)
     fabric.run("chmod 600 {}".format(secret_file))
+
+
+@fabric.task
+@requires_config
+def configure_server(as_user):
+    """Do one-time configuration of server
+    """
+    cfg_dict = fabric.env.cfg.as_dict()
+    group_check = "groups {} | cut -d: -f2 | grep www-data"
+    cp_upstart = "cp {root}/shared/init/{app_name}-{env_name}-* /etc/init"
+
+    template = local_path("templates/sudoers")
+    with open(template) as fp:
+        sudoers_template = fp.read()
+
+    with fabric.settings(user=as_user):
+        if not test_cmd(group_check.format(fabric.env.cfg.user)):
+            fabric.sudo("usermod -a -G www-data {}".format(fabric.env.cfg.user))
+
+        append_to_file("/etc/sudoers",
+                sudoers_template.format(**cfg_dict), use_sudo=True)
+
+    fabric.execute(setup)
+
+    with fabric.settings(user=as_user):
+        fabric.sudo(cp_upstart.format(**cfg_dict))
+
+    fabric.execute(put_secrets)
+
+    # Don't do this since puppet manages this
+    #"cp {root}/shared/config/{app_name}-{env_name} /etc/nginx/sites-enabled"
