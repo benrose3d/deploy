@@ -93,8 +93,7 @@ def requires_config(func):
 
 def get_config(env_name, filename="project.cfg"):
     paths = [
-        os.path.join('deploy_config', filename),
-        os.path.join(os.getenv('DEPLOY_CONFIGS', ''), filename),
+        os.path.join(os.getenv('DEPLOY_CONFIGS', 'deploy_config'), filename),
         os.path.join(os.getenv('HOME', ''), '.deploy_config', filename),
     ]
 
