@@ -3,43 +3,31 @@ from fabric import colors
 import fabric.api as fabric
 from fabric.contrib.files import upload_template, append as append_to_file
 
+from .config import UPSTART_RUNNER, DEFAULT_PROCESSES
+from .config import DIRECTORIES, DIST_PACKAGES, BINSTUB_RUNNER, VIRTUALENV_CMD
+
 from utils import local_path, root_path
 from utils import get_prior_release, test_cmd
 from utils import all_processes_sudo, dir_exists
 from utils import friendly_release_dir, print_center
 from utils import mkdir, ErrorCollector, requires_config
 from utils import get_release_ref, get_release_dir, django_run, pip_run
+
 from utils.migrations import get_release_meta, MigrationRollback
 from utils.migrations import get_release_manifest, parse_migrations
 
 
-__all__ = ["setup", "check", "promote", "prune", "rollback", "info",
-            "build_docs", "deploy", "recreate_virtualenv", "purge",
-            "list_prior", "put_secrets", "configure_server"]
-
-
-# Dir name (relative to root) and mode
-DIRECTORIES = [
-    ("releases", None, None),
-    (".pip_cache", None, None),
-    ("bin", None, None),
-    ("shared/secrets", 700, None),
-    ("shared/init", None, None),
-    ("shared/log", 770, "{user}:www-data"),
-    ("shared/run", None, None),
-    ("shared/config", None, None),
+__all__ = [
+    "setup", "check", "promote", "prune", "rollback", "info", "build_docs",
+    "deploy", "recreate_virtualenv", "purge", "list_prior", "put_secrets",
+    "configure_server"
 ]
-
-DIST_PACKAGES = {
-    "psycopg2": ["psycopg2", "psycopg2-*.egg-info"],
-    "lxml": ["lxml", "lxml-*.egg-info"],
-    "imaging": ["PIL", "PIL.pth"],
-    "mysqldb": ["MySQLdb", "MySQL_python-*.egg-info", "_mysql*"],
-}
 
 
 @fabric.task
 def create_directories():
+    """Create initial directory layout and ensure permissions
+    """
     with fabric.cd(mkdir(fabric.env.cfg.root)):
         for directory, mode, owner in DIRECTORIES:
             mkdir(directory)
@@ -55,11 +43,12 @@ def create_directories():
 @fabric.task
 @requires_config
 def create_binstubs():
-    output = root_path("bin/run")
+    """Create binstub for django-admin.py
 
-    runner = ("{root}/shared/system/bin/envrun "
-              "{root}/shared/secrets/environ.cfg "
-              "{root}/shared/system/bin/django-admin.py ")
+    Creates $ROOT/bin/run that is a shortcut to django-admin.py with
+    appropriate environment setup.
+    """
+    output = root_path("bin/run")
 
     args = {
         "app_name": fabric.env.cfg.app_name,
@@ -67,7 +56,7 @@ def create_binstubs():
         "env_name": fabric.env.environment_name,
     }
 
-    args["runner"] = runner.format(**args)
+    args["runner"] = BINSTUB_RUNNER.format(**args)
 
     upload_template(local_path("templates/run.sh"), output, args, backup=False)
     fabric.run("chmod +x {}".format(output))
@@ -75,27 +64,30 @@ def create_binstubs():
 
 @fabric.task
 def create_virtualenv(recreate=False):
-    python = fabric.env.cfg.python_version
-    site_packages = fabric.env.cfg.get_bool("site_packages")
-    pkgs_flag = "" if site_packages else "--no-site-packages"
-    path = root_path("shared/system")
+    """Create or recreate virtual environment
+    """
+    args = {
+        "python": fabric.env.cfg.python_version,
+        "pkgs_flag": ("" if fabric.env.cfg.get_bool("site_packages")
+            else "--no-site-packages"),
+        "path": root_path("shared/system"),
+    }
 
     exists = dir_exists(root_path("shared/system/bin"))
 
     if exists and recreate:
-        fabric.run("rm -rf {}".format(path))
+        fabric.run("rm -rf {}".format(args["path"]))
 
     if exists and not recreate:
         return
 
-    fabric.run("virtualenv --python=python{python} {pkgs_flag} {path}".format(
-                **locals()))
-
-    fabric.execute(link_dist_packages)
+    fabric.run(VIRTUALENV_CMD.format(**args))
 
 
 @fabric.task
 def create_nginx_config():
+    """Create nginx configuration files for HTTP and HTTPS
+    """
     http_template = local_path("templates/nginx.cfg")
     https_template = local_path("templates/nginx_ssl.cfg")
 
@@ -119,21 +111,10 @@ def create_nginx_config():
 
 @fabric.task
 def create_upstart_configs():
+    """Generate Upstart configuration files
+    """
     template = local_path("templates/upstart.cfg")
-
-    runner = ("{root}/shared/system/bin/envrun "
-                "{root}/shared/secrets/environ.cfg {command}")
-
-    default_processes = {
-        "web": ("gunicorn "
-                "--settings={app_name}.settings {workers}"
-                "--error-logfile={shared}/log/error.log "
-                "--pid={shared}/run/gunicorn.pid "
-                "--bind=unix:{shared}/run/gunicorn.sock "
-                "{app_name}.wsgi:application"),
-    }
-
-    processes = fabric.env.cfg.processes or default_processes
+    processes = fabric.env.cfg.processes or DEFAULT_PROCESSES
     workers = fabric.env.cfg.get("workers")
 
     args = {
@@ -149,14 +130,14 @@ def create_upstart_configs():
     }
 
     for process_name, base_command in processes.items():
-        if process_name in default_processes and not base_command:
-            base_command = default_processes[process_name]
+        if process_name in DEFAULT_PROCESSES and not base_command:
+            base_command = DEFAULT_PROCESSES[process_name]
 
         args.update({
             "description": "{} {}".format(fabric.env.cfg.app_name,
                 process_name),
             "process_name": process_name,
-            "process": runner.format(root=fabric.env.cfg.root,
+            "process": UPSTART_RUNNER.format(root=fabric.env.cfg.root,
                 command=base_command.format(**args)),
         })
 
@@ -168,6 +149,11 @@ def create_upstart_configs():
 
 @fabric.task
 def update_code():
+    """Clone (or fetch from) a git repo and export a copy
+
+    Clones the git repo if it doesn't exist and then exports the release ref to
+    the release directory.
+    """
     repo_path = root_path("shared/repo")
 
     if not dir_exists(repo_path):
@@ -189,6 +175,8 @@ def update_code():
 
 @fabric.task
 def configure_ssh():
+    """Disable strict host checking for GitHub
+    """
     if not test_cmd("grep 'Host github.com' ~/.ssh/config"):
         fabric.run("echo 'Host github.com\n    StrictHostKeyChecking no' "
                 ">> ~/.ssh/config")
@@ -196,6 +184,8 @@ def configure_ssh():
 
 @fabric.task
 def link_release(release=None):
+    """Link current release directory to current release
+    """
     if not release:
         release = fabric.env.release_dir
 
@@ -207,11 +197,15 @@ def link_release(release=None):
 
 @fabric.task
 def pip_install_requirements():
+    """Install pip requirements
+    """
     pip_run("install", "-q", "-r", "requirements.txt")
 
 
 @fabric.task
 def migrate():
+    """Migrate the database
+    """
     if not fabric.env.cfg.skip_syncdb:
         django_run("syncdb", "--noinput")
 
@@ -220,6 +214,8 @@ def migrate():
 
 @fabric.task
 def precompile_assets():
+    """Precompile assets using Django collectstatic
+    """
     django_run("collectstatic", "--noinput", "-v 0")
 
 
@@ -270,6 +266,7 @@ def recreate_virtualenv():
     """Purge the old virtualenv and recreate
     """
     fabric.execute(create_virtualenv, recreate=True)
+    fabric.execute(link_dist_packages)
 
 
 @fabric.task
@@ -279,6 +276,7 @@ def setup():
     """
     fabric.execute(create_directories)
     fabric.execute(create_virtualenv)
+    fabric.execute(link_dist_packages)
     fabric.execute(create_upstart_configs)
     fabric.execute(create_nginx_config)
     fabric.execute(create_binstubs)
@@ -356,8 +354,8 @@ def link_dist_packages():
     site_pkgs = root_path("shared/system/lib",
             "python{}".format(fabric.env.cfg.python_version), "site-packages")
 
-    args = ["-name {!r}".format(glob) for value in DIST_PACKAGES.values() for
-            glob in value]
+    args = ["-name {!r}".format(glob) for value in DIST_PACKAGES.values()
+            for glob in value]
 
     fabric.run("find {} {} | xargs -I % ln -s % {}".format(
         dist_pkgs, " -o ".join(args), site_pkgs), warn_only=True)
