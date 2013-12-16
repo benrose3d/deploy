@@ -5,7 +5,7 @@ from datetime import datetime
 from cStringIO import StringIO
 from ConfigParser import ConfigParser, SafeConfigParser
 
-from utils import friendly_date
+from . import friendly_date
 
 
 def parse_migrations(data):

@@ -1,9 +1,10 @@
 import fabric.api as fabric
 
-from utils import get_config
+from .utils import get_config
 
 import deploy
 import shell
+import setup
 
 
 @fabric.task
@@ -12,7 +13,7 @@ import shell
 def env(project, env_name):
     """Set environment name and load config
     """
-    cfg = get_config(env_name, "config/{}.cfg".format(project))
+    cfg = get_config(env_name, "{}.cfg".format(project))
 
     fabric.env.port = int(cfg.get("port", 22))
     fabric.env.cfg = cfg

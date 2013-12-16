@@ -1,6 +1,6 @@
 import fabric.api as fabric
 
-from utils import requires_config
+from .utils import requires_config
 
 
 @fabric.task

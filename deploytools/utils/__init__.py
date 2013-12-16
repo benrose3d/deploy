@@ -92,8 +92,21 @@ def requires_config(func):
 
 
 def get_config(env_name, filename="project.cfg"):
+    paths = [
+        os.path.join('deploy_config', filename),
+        os.path.join(os.getenv('DEPLOY_CONFIGS', ''), filename),
+        os.path.join(os.getenv('HOME', ''), '.deploy_config', filename),
+    ]
+
     cfg = SafeConfigParser()
-    cfg.read(filename)
+
+    for path in paths:
+        if os.path.exists(path):
+            cfg.read(path)
+            break
+    else:
+        raise Exception("No config file found")
+
     app_cfg = AttrDict(cfg.items("ALL_ENVIRONMENTS"))
 
     try:
@@ -185,5 +198,5 @@ def root_path(*args):
 
 def local_path(*args):
     path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
-        "fabfile"))
+        "deploytools"))
     return _rooted_path(path, *args)
