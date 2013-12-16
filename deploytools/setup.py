@@ -6,7 +6,7 @@ from config import (UPSTART_RUNNER, DEFAULT_PROCESSES, DIRECTORIES,
         DIST_PACKAGES, BINSTUB_RUNNER, VIRTUALENV_CMD)
 
 from .utils import (local_path, root_path, test_cmd, dir_exists, mkdir,
-        ErrorCollector, requires_config)
+        ErrorCollector, requires_config, local_config_path)
 
 
 __all__ = [
@@ -251,8 +251,9 @@ def put_secrets():
     """Push secret configs to server and set permissions
     """
     secret_file = root_path("shared/secrets/environ.cfg")
-    secrets = os.path.join("config", "secrets", fabric.env.cfg.app_name,
-            "{}.cfg".format(fabric.env.environment_name))
+    secrets = local_config_path(os.path.join("secrets",
+        fabric.env.cfg.app_name,
+        "{}.cfg".format(fabric.env.environment_name)))
 
     fabric.put(secrets, secret_file)
     fabric.run("chmod 600 {}".format(secret_file))

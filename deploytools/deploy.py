@@ -78,7 +78,7 @@ def pip_install_requirements():
 def migrate():
     """Migrate the database
     """
-    if not fabric.env.cfg.skip_syncdb:
+    if not fabric.env.cfg.get_bool("skip_syncdb"):
         django_run("syncdb", "--noinput")
 
     django_run("migrate", "--no-initial-data")
