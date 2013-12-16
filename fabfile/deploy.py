@@ -8,7 +8,7 @@ from utils import get_prior_release, test_cmd
 from utils import all_processes_sudo, dir_exists
 from utils import friendly_release_dir, print_center
 from utils import mkdir, ErrorCollector, requires_config
-from utils import get_release_ref, get_release_dir, django_run
+from utils import get_release_ref, get_release_dir, django_run, pip_run
 from utils.migrations import get_release_meta, MigrationRollback
 from utils.migrations import get_release_manifest, parse_migrations
 
@@ -80,8 +80,7 @@ def create_virtualenv(recreate=False):
     pkgs_flag = "" if site_packages else "--no-site-packages"
     path = root_path("shared/system")
 
-    exists = fabric.run("test -d {}".format(root_path("shared/system/bin")),
-            warn_only=True).succeeded
+    exists = dir_exists(root_path("shared/system/bin"))
 
     if exists and recreate:
         fabric.run("rm -rf {}".format(path))
@@ -201,19 +200,14 @@ def link_release(release=None):
         release = fabric.env.release_dir
 
     with fabric.cd(fabric.env.cfg.root):
-        fabric.run("rm current".format(fabric.env.release_dir), warn_only=True)
+        fabric.run("rm current".format(fabric.env.release_dir), warn_only=True,
+                quiet=True)
         fabric.run("ln -s {} current".format(release))
 
 
 @fabric.task
 def pip_install_requirements():
-    env = {
-        "PIP_DOWNLOAD_CACHE": root_path(".pip_cache"),
-        "PATH": root_path("shared/system/bin"),
-    }
-
-    with fabric.shell_env(**env), fabric.cd(fabric.env.release_dir):
-        fabric.run("pip install -q -r requirements.txt")
+    pip_run("install", "-q", "-r", "requirements.txt")
 
 
 @fabric.task
@@ -243,15 +237,9 @@ def casexpert_hack():
     upload_template(template,
             root_path("current/settings_local.py"), {}, backup=False)
 
-    env = {
-        "PIP_DOWNLOAD_CACHE": root_path(".pip_cache"),
-        "PATH": root_path("shared/system/bin"),
-    }
-
-    with fabric.shell_env(**env), fabric.cd(fabric.env.release_dir):
-        fabric.run("pip install "
-                "--find-links http://packages.finiteloopsoftware.com/eggs/ "
-                "finiteloop")
+    pip_run("install",
+            "--find-links", "http://packages.finiteloopsoftware.com/eggs/",
+            "finiteloop")
 
 
 @fabric.task(default=True)

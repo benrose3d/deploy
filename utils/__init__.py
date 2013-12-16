@@ -76,7 +76,7 @@ def mkdir(path):
 
 
 def dir_exists(path):
-    return fabric.run("test -d {}".format(path), warn_only=True).succeeded
+    return test_cmd("test -d {}".format(path))
 
 
 def requires_config(func):
@@ -147,6 +147,17 @@ def friendly_release_dir(name):
 def django_run(cmd, *args, **kwargs):
     command = [root_path("bin/run"), cmd] + list(args)
     return fabric.run(" ".join(command), **kwargs)
+
+
+def pip_run(cmd, *args, **kwargs):
+    env = {
+        "PIP_DOWNLOAD_CACHE": root_path(".pip_cache"),
+        "PATH": root_path("shared/system/bin"),
+    }
+
+    with fabric.shell_env(**env), fabric.cd(fabric.env.release_dir):
+        cmd = ["pip", cmd] + list(args)
+        return fabric.run(" ".join(cmd))
 
 
 def print_center(string, *args):
