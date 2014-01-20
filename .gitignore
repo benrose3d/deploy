@@ -2,3 +2,4 @@
 /deploy_config
 /dist/
 /finiteloop_deploy.egg-info/
+/build
