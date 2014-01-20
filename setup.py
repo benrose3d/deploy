@@ -28,6 +28,7 @@ setup(
     author_email='mike@finiteloopsoftware.com',
     url='http://finiteloopsoftware.com',
     packages=find_packages('deploytools'),
+    package_data={ 'deploytools': ['templates/*', ]},
     install_requires=['fabric'],
     entry_points={
         'console_scripts': [
