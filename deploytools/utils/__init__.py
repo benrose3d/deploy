@@ -101,7 +101,7 @@ def local_config_path(filename):
         if os.path.exists(path):
             return path
     else:
-        raise Exception("No config file found")
+        raise Exception("No config file found - {}".format(filename))
 
 
 def get_config(env_name, filename="project.cfg"):
