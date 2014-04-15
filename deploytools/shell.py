@@ -1,6 +1,6 @@
 import fabric.api as fabric
 
-from .utils import requires_config
+from .utils import requires_config, root_path
 
 
 @fabric.task
@@ -13,10 +13,20 @@ def shell():
 
 @fabric.task
 @requires_config
-def invoke(command, *args):
-    """Run a Django management command
+def clearsessions():
+    """clear the Django sessions
     """
-    pass
+    args = [root_path('bin/run'), "clearsessions"]
+    fabric.run(" ".join(args))
+
+@fabric.task
+@requires_config
+def invalidate():
+    """Invalidate the caches
+    """
+    args = [root_path('bin/run'), "invalidate", "--all"]
+    fabric.run(" ".join(args))
+
 
 
 @fabric.task
