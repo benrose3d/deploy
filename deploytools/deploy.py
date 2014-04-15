@@ -62,8 +62,7 @@ def link_release(release=None):
         release = fabric.env.release_dir
 
     with fabric.cd(fabric.env.cfg.root):
-        fabric.run("rm current".format(fabric.env.release_dir), warn_only=True,
-                quiet=True)
+        fabric.run("rm current", warn_only=True, quiet=True)
         fabric.run("ln -s {} current".format(release))
 
 
